@@ -1,49 +1,76 @@
 import csv
+import os
+import sys
+import ssl
 import sqlite3
 import smtplib
 import requests
-import sqlalchemy
+import argparse
 from os import environ
-from datetime import date
-from datetime
+from datetime import date, datetime
 from typing import List
+from dotenv import load_dotenv
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+from email.mime.base import MIMEBase
+from email import encoders
+import pandas as pd
+
+load_dotenv()
 
 BASE_URL = "https://data.usajobs.gov/api/"
+
+BASE_DIR = os.path.realpath('')
+DB_NAME = str(os.environ.get("DB_NAME"))
+DATABASE_DIR = os.path.join(BASE_DIR, DB_NAME)
+EXPORTS_DIR = os.path.join(BASE_DIR, r"exports")
+
 PAGE_LIMIT = 500
+TITLES = ['Data Analyst', 'Data Scientist', 'Data Engineering']
+KEYWORDS = ['data', 'analysis', 'analytics']
+
+# Change directory to the directory of this script
+os.chdir(BASE_DIR)
 
 
-def db_connect(db_name: str):
+def db_connect(db_path: str = DATABASE_DIR):
     """Connects to database and returns a database connection object. """
     try:
-        db_connection = sqlite3.connect(db_name)
+        db_connection = sqlite3.connect(db_path)
         return db_connection
-    except sqlite3.Error as err:
-        print(err)
+    except sqlite3.Error as error:
+        print("Failed to connect to the database.", error)
+        sys.exit(1)
 
 
 def get_api_call(endpoint: str, params: dict, base_url: str = BASE_URL, page_limit: int = PAGE_LIMIT):
     """
     Makes a GET request with appropriate parameters, authentication,
     while respecting page and rate limits, and paginating if needed. 
-    
+
     Returns a JSON API response object. """
 
     # Set up authentication
     headers = {
         "Host": "data.usajobs.gov",
-        "User-Agent": environ["USER_AGENT"],
-        "Authorization-Key": environ["API_KEY"]
+        "User-Agent": os.environ.get('USER_AGENT'),
+        "Authorization-Key": os.environ.get('API_KEY')
     }
 
     # Set up default parameters
     params["ResultsPerPage"] = page_limit
     params["SortField"] = "DatePosted"
+    params["SortOrder"] = "Descending"
 
     # Make the API call
-    url = base_url + endpoint
-    response = requests.get(url, headers=headers, params=params)
-
-    return response.json()
+    try:
+        url = base_url + endpoint
+        response = requests.get(url, headers=headers, params=params)
+        response.raise_for_status()
+        return response.json()
+    except requests.exceptions.HTTPError as err:
+        print(err)
+        sys.exit(1)
 
 
 def parse_positions(response_json):
@@ -52,138 +79,270 @@ def parse_positions(response_json):
 
     Returns a list of positions of appropriate object type. """
 
-    positions = []
-    for result in response_json["SearchResult"]["SearchResultItems"]:
-        position = {
-            "title": result["MatchedObjectDescriptor"]["PositionTitle"],
-            "organization": result["MatchedObjectDescriptor"]["OrganizationName"],
-            "location": result["MatchedObjectDescriptor"]["PositionLocation"],
-            "description": result["MatchedObjectDescriptor"]["JobSummary"],
-            "date_posted": result["MatchedObjectDescriptor"]["DatePosted"],
-            "date_closing": result["MatchedObjectDescriptor"]["DateClosing"],
-            "keywords": result["MatchedObjectDescriptor"]["KeywordText"],
-            "remuneration_min": result["MatchedObjectDescriptor"]["PositionRemuneration"]["MinimumRange"],
-            "remuneration_max": result["MatchedObjectDescriptor"]["PositionRemuneration"]["MaximumRange"],
-            "remuneration_rate": result["MatchedObjectDescriptor"]["PositionRemuneration"]["RateIntervalCode"],
-            "who_may_apply": result["MatchedObjectDescriptor"]["UserArea"]["Details"]["WhoMayApply"]["Name"],
-            "close_date": result["MatchedObjectDescriptor"]["ApplicationCloseDate"],
-            "url": result["MatchedObjectDescriptor"]["PositionURI"],
-        }
-        positions.append(position)
+    # TODO: Could improve this by extracting all variations of same position / per location different salaries
 
-    return positions
+    positions = []
+
+    try:
+        for job in response_json["SearchResult"]["SearchResultItems"]:
+            position = {
+                "PositionID": job["MatchedObjectDescriptor"]["PositionID"],
+                "PositionTitle": job["MatchedObjectDescriptor"]["PositionTitle"].strip().title(),
+                "OrganizationName": job["MatchedObjectDescriptor"]["OrganizationName"],
+                "RemunerationMin": float(job["MatchedObjectDescriptor"]["PositionRemuneration"][0]["MinimumRange"]),
+                "RemunerationMax": float(job["MatchedObjectDescriptor"]["PositionRemuneration"][0]["MaximumRange"]),
+                "RemunerationRate": job["MatchedObjectDescriptor"]["PositionRemuneration"][0]["RateIntervalCode"],
+                "WhoMayApply": job["MatchedObjectDescriptor"]["UserArea"]["Details"]["WhoMayApply"]["Name"],
+                "ApplicationCloseDate": job["MatchedObjectDescriptor"]["ApplicationCloseDate"],
+            }
+            positions.append(position)
+
+            return positions
+
+    except() as err:
+        print(err)
+        sys.exit(1)
+
+    except() as err:
+        print(err)
+        sys.exit(1)
 
 
 def extract_positions(titles: List[str], keywords: List[str]):
     """
-    Makes API calls for titles and keywords, parses the responses. 
-    
+    Makes API calls for titles and keywords, parses the responses.
+
     Returns the values ready to be loaded into database. """
 
-    # Set up parameters
+    # TODO: Only 2 results are returned. Also, unsure whether this merge is appropriate to avoid duplicates.
+
+    # Set up API query parameters
     params_titles = {
-        "Title": titles
+        "PositionTitle": titles
     }
 
     params_keywords = {
-        "Keyword": keywords,
+        "Keyword": keywords
     }
 
-    # Get the API call
-    api_response_titles = get_api_call("Search", params_titles)
-    api_response_keywords = get_api_call("Search", params_keywords)
+    # Retrieve API responses
+    try:
+        api_response_titles = get_api_call("Search", params_titles)
+        api_response_keywords = get_api_call("Search", params_keywords)
 
-    # Parse the API responses
-    positions_title_search = parse_positions(api_response_titles)
-    positions_keyword_search = parse_positions(api_response_keywords)
+        # Parse the API responses
+        title_search = parse_positions(api_response_titles)
+        keyword_search = parse_positions(api_response_keywords)
 
-    return positions_title_search, positions_keyword_search
+        # Merge search results on PositionID into a DataFrame
+        merged_search = title_search + keyword_search
+        search_df = pd.DataFrame(merged_search)
+        search_df = search_df.drop_duplicates(subset="PositionID", keep="first")
+
+        return search_df
+
+    except requests.exceptions.HTTPError as err:
+        print(err)
+        sys.exit(1)
 
 
-def prep_database(db_name: str) -> None:
+def prep_database(db_name: str = DB_NAME) -> None:
     """Connects to database and creates tables if necessary. """
-    db_connection = db_connect(db_name)
-    with db_connection:
+    # TODO: Could improve database design adding levels of granularity and foreign keys
+    try:
+        db_connection = db_connect(db_name)
         db_cursor = db_connection.cursor()
-        db_cursor.execute("""CREATE TABLE IF NOT EXISTS positions (
-            id INTEGER PRIMARY KEY,
-            title TEXT,
-            organization TEXT,
-            location TEXT,
-            description TEXT,
-            date_posted TEXT,
-            date_closing TEXT,
-            keywords TEXT,
-            remuneration_min TEXT,
-            remuneration_max TEXT,
-            remuneration_rate TEXT,
-            who_may_apply TEXT,
-            close_date TEXT,
-            url TEXT
-        )""")
+        db_cursor.execute("""CREATE TABLE IF NOT EXISTS POSITION (
+                                TITLE_ID            VARCHAR(255)        PRIMARY KEY,
+                                TITLE               VARCHAR(255)        NOT NULL,
+                                ORGANISATION_NAME   VARCHAR(255)        NOT NULL,
+                                REMUNERATION_MIN    REAL,
+                                REMUNERATION_MAX    REAL,
+                                REMUNERATION_RATE   VARCHAR(255),
+                                WHO_MAY_APPLY       VARCHAR(255),
+                                APPLICATION_CLOSE_DATE TIMESTAMP     NOT NULL);""")
+        db_connection.commit()
+        print(f"Database created: {db_name} at {DIR}")
+        print("Table POSITION has been created")
+    except sqlite3.Error as error:
+        print("Failed to execute the above query", error)
+        sys.exit(1)
+    finally:
+        if db_connection:
+            db_connection.close()
 
 
-def load_data(row_values: List[dict], table_name: str) -> None:
-    """Connects to database and loads values in corresponding tables. """
-    db_connection = db_connect("db.sqlite")
-    with db_connection:
-        db_cursor = db_connection.cursor()
-        db_cursor.executemany("""INSERT INTO {} VALUES (?,?,?,?,?,?,?,?)""".format(table_name), row_values)
+def load_df(df: pd.DataFrame, db_name: str = DB_NAME) -> None:
+    """Loads dataframe into database using sqlalchemy. """
+    try:
+        db_connection = db_connect(db_name)
+        with db_connection:
+            db_cursor = db_connection.cursor()
+            for index, row in df.iterrows():
+                db_cursor.execute(""" INSERT OR REPLACE INTO POSITION (
+                                                    TITLE_ID, 
+                                                    TITLE, 
+                                                    ORGANISATION_NAME, 
+                                                    REMUNERATION_MIN, 
+                                                    REMUNERATION_MAX, 
+                                                    REMUNERATION_RATE, 
+                                                    WHO_MAY_APPLY, 
+                                                    APPLICATION_CLOSE_DATE
+                                                    )    
+                                                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                                  (row["PositionID"],
+                                   row["PositionTitle"],
+                                   row["OrganizationName"],
+                                   row["RemunerationMin"],
+                                   row["RemunerationMax"],
+                                   row["RemunerationRate"],
+                                   row["WhoMayApply"],
+                                   row["ApplicationCloseDate"]))
+            db_connection.commit()
+    except sqlite3.Error as error:
+        print("Failed to execute the above query", error)
+        sys.exit(1)
+    finally:
+        if db_connection:
+            db_connection.close()
 
 
-def run_analysis(output_path: str):
+def export_query_as_csv(query: str, query_name: str, path: str, db_name: str = DB_NAME) -> None:
+    """exports query results to CSV file.  """
+
+    try:
+        # Get the database connection
+        db_connection = db_connect(db_name)
+        with db_connection:
+            db_cursor = db_connection.cursor()
+            db_cursor.execute(query)
+            rows = db_cursor.fetchall()
+        try:
+            # Write to CSV file
+            with open(os.path.join(path, query_name), "w") as csv_file:
+                writer = csv.writer(csv_file)
+                writer.writerow([i[0] for i in db_cursor.description])
+                writer.writerows(rows)
+        except IOError as err:
+            print(err)
+            sys.exit(1)
+    except sqlite3.Error as err:
+        print(err)
+        sys.exit(1)
+    finally:
+        if db_connection:
+            db_cursor.close()
+            db_connection.close()
+
+
+def run_analysis(exports_path: str = EXPORTS_DIR):
     """
     Runs 3 SQL queries to obtain results that could answer the following questions:
     1. How do *monthly* starting salaries differ across positions with different titles and keywords?
     2. Do (filtered) positions for which 'United States Citizens' can apply have a higher average salary than those
        that 'Student/Internship Program Eligibles' can apply for? (by month)
     3. What are the organisations that have most open (filtered) positions?
-    
-    Exports results of queries into CSV files in the `output_path` directory.
 
-    ** Feel free to break this function down into smaller units 
-    (hint: potentially have a `export_csv(query_result)` function)  
+    exports results of queries into CSV files in the `output_path` directory.
+
+    ** Feel free to break this function down into smaller units
+    (hint: potentially have a `export_csv(query_result)` function)
     """
-    # 1. How do *monthly* starting salaries differ across positions with different titles and keywords?
-    query_1 = """
-        SELECT DISTINCT title, keywords, remuneration_min
-        FROM positions
-        WHERE remuneration_rate = 'Monthly'
+
+    query_1 = """ 
+        SELECT DISTINCT TITLE_ID, TITLE, REMUNERATION_MIN   
+        FROM POSITION
+        WHERE REMUNERATION_RATE = 'Monthly'
+        AND LOWER(TITLE) LIKE '%data%'
+        GROUP BY 1
+        ORDER BY 2 DESC 
+        """
+    query_2 = """
+        SELECT DISTINCT WHO_MAY_APPLY, AVG(REMUNERATION_MIN), AVG(REMUNERATION_MAX) 
+        FROM POSITION
+        WHERE WHO_MAY_APPLY LIKE '%United States Citizens%' 
+        OR WHO_MAY_APPLY LIKE '%Student/Internship Program Eligibles%'
+        AND REMUNERATION_RATE = 'Monthly'
+        GROUP BY WHO_MAY_APPLY
+        ORDER BY AVG(REMUNERATION_MIN) DESC
+        """
+    query_3 = """
+        SELECT ORGANISATION_NAME, COUNT(TITLE_ID)
+        FROM POSITION
+        WHERE APPLICATION_CLOSE_DATE > DATE('NOW')
+        GROUP BY 1
+        ORDER BY 2 DESC
         """
 
-    # 2. Do (filtered) positions for which 'United States Citizens' can apply have a higher average salary than those
-    #    that 'Student/Internship Program Eligibles' can apply for? (by month)
-    query_2 = """ """
+    curr_timestamp = int(datetime.timestamp(datetime.now()))
 
-    # 3. What are the organisations that have most open (filtered) positions?
-    query_3 = """ """
+    global ANALYSIS_DIR
+    ANALYSIS_DIR = os.path.join(exports_path, str(curr_timestamp))
 
-    db_connection = db_connect("db.sqlite")
-    with db_connection as db:
-        db_cursor = db.cursor()
-        db_cursor.execute(query_1)
-        query_1_result = db_cursor.fetchall()
-        db_cursor.execute(query_2)
-        query_2_result = db_cursor.fetchall()
-        db_cursor.execute(query_3)
-        query_3_result = db_cursor.fetchall()
+    try:
+        # Create analysis folder if necessary
+        if not os.path.exists(os.path.join(ANALYSIS_DIR)):
+            os.makedirs(ANALYSIS_DIR)
+            # Export results of queries into CSV files in the `output_path` directory.
+        for num, query in enumerate([query_1, query_2, query_3], start=1):
+            export_query_as_csv(query, query_name=f"query{num}_{curr_timestamp}.csv", path=ANALYSIS_DIR)
+
+    except sqlite3.Error as error:
+        print("Failed to execute the above query", error)
+        sys.exit(1)
 
 
-def send_reports(recipient_email: str, reports_path: str):
+def send_reports(reports_path: str):
     """
-    Loops through present CSV files in reports_path, 
-    and sends them via email to recipient. 
+    Loops through present CSV files in reports_path,
+    and sends them via email to recipient.
 
     Returns None
     """
+    curr_timestamp = int(datetime.timestamp(datetime.now()))
 
     # Set up email parameters
-    email_params = {
-        "recipient_email": recipient_email,
-        "reports_path": reports_path
-    }
+    msg = MIMEMultipart()
+    msg["From"] = os.environ.get("EMAIL")
+    msg["To"] = os.environ.get("EMAIL_TO")
+    msg["Subject"] = "Antonio - Data Analysis Reports {}".format(date.today())
+    msg.attach(MIMEText("Please find attached reports for today's analysis."))
 
-    # Send email
+    context = ssl.create_default_context()
+
+    # Loop through CSV files in reports_path, attach to email
+    try:
+        for file in os.listdir(reports_path):
+            with open(os.path.join(reports_path, file), "rb") as attachment:
+                part = MIMEBase("application", "octet-stream")
+                part.set_payload(attachment.read())
+                encoders.encode_base64(part)
+                part.add_header(
+                    "Content-Disposition",
+                    "attachment; filename={}".format(file),
+                )
+                msg.attach(part)
+    except FileNotFoundError:
+        print("No reports found in {}".format(reports_path))
+        sys.exit(1)
+
+    try:
+        # Send email using SMTP
+        smtp_server = smtplib.SMTP(os.environ.get('SMTP_SERVER'), int(os.environ.get('PORT')))
+        smtp_server.ehlo()
+        # Start TLS for security
+        smtp_server.starttls(context=context)
+        # Identify ourselves to smtp gmail client
+        smtp_server.ehlo()
+        # Identify to server this time with encrypted connection
+        smtp_server.login(os.environ.get('EMAIL'), os.environ.get('PASSWORD'))
+        # Send email
+        smtp_server.sendmail(os.environ.get('EMAIL'), os.environ.get('EMAIL_TO'), msg.as_string())
+        # Quit server
+        smtp_server.quit()
+    except Exception as e:
+        print(e)
+        sys.exit(1)
 
 
 if __name__ == "__main__":
@@ -195,7 +354,60 @@ if __name__ == "__main__":
 
     Optionally, enable running this script as a CLI tool with arguments for position titles and keywords. 
     """
-    # import argparse
 
-    curr_timestamp = int(datetime.timestamp(datetime.now()))
+    # parser = argparse.ArgumentParser()
+
+    # Step 1: Extract and transform job data from API
+    try:
+        print("Extracting and parsing job data from API...")
+        response_dataframe = extract_positions(TITLES, KEYWORDS)
+    except Exception as e:
+        print("Failed to extract and parse job data from API", e)
+        sys.exit(1)
+    print("Extraction complete.")
+
+    # Step 2: Create SQLite database and load data into it
+    try:
+        print("Connecting to SQLite database...")
+        prep_database()
+        print("Database connection successful.")
+        print("Loading data into database...")
+        load_df(response_dataframe)
+        print("Data load complete.")
+    except Exception as e:
+        print("Failed to connect to database", e)
+        sys.exit(1)
+
+    # Step 3: Run analysis queries
+    try:
+        print("Running analysis queries...")
+        run_analysis()
+        print("Analysis complete.")
+    except Exception as e:
+        print("Failed to run analysis queries", e)
+        sys.exit(1)
+
+    # Step 4: Send report email
+    print("Sending reports email...")
+    try:
+        send_reports(ANALYSIS_DIR)  # ANALYSIS_DIR is defined when function is executed
+        print("Reports email sent.")
+    except Exception as e:
+        print("Failed to send reports email", e)
+        sys.exit(1)
+
+
+# TODO:
+#       - Solve doubts: why response is so small?
+#       - Setup a cron job to run this script daily scheduled on GCP
+
+
+# TODO: Final touches
+#  - Add error handling to catch more accurate errors
+#  - Add CLI functionality
+#  - Improve models / extract more data points / use foreign keys
+#  - Could add unit tests
+#  - Could add logs for debugging
+#  - Could add more robust email sending
+#  - Make script modular and separated to different files for better maintainability
 
