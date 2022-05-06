@@ -162,7 +162,7 @@ def prep_database(db_name: str = DB_NAME) -> None:
                                 WHO_MAY_APPLY       VARCHAR(255),
                                 APPLICATION_CLOSE_DATE TIMESTAMP     NOT NULL);""")
         db_connection.commit()
-        print(f"Database created: {db_name} at {DIR}")
+        print(f"Database created: {db_name} at {BASE_DIR}")
         print("Table POSITION has been created")
     except sqlite3.Error as error:
         print("Failed to execute the above query", error)
@@ -400,6 +400,8 @@ if __name__ == "__main__":
 # TODO:
 #       - Solve doubts: why response is so small?
 #       - Setup a cron job to run this script daily scheduled on GCP
+#       - Add argument parsing to CLI tool
+#       - Use professional project structure
 
 
 # TODO: Final touches
