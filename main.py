@@ -6,7 +6,7 @@ import sqlite3
 import smtplib
 import requests
 import argparse
-from datetime import date, datetime
+from datetime import date
 from typing import List
 from dotenv import load_dotenv
 from email.mime.multipart import MIMEMultipart
@@ -274,10 +274,8 @@ def run_analysis(exports_path: str = EXPORTS_DIR):
         ORDER BY 2 DESC
         """
 
-    curr_timestamp = int(datetime.timestamp(datetime.now()))
-
     global ANALYSIS_DIR
-    ANALYSIS_DIR = os.path.join(exports_path, str(curr_timestamp))
+    ANALYSIS_DIR = os.path.join(exports_path, str(date.today()))
 
     try:
         # Create analysis folder if necessary
@@ -285,7 +283,7 @@ def run_analysis(exports_path: str = EXPORTS_DIR):
             os.makedirs(ANALYSIS_DIR)
             # Export results of queries into CSV files in the `output_path` directory.
         for num, query in enumerate([query_1, query_2, query_3], start=1):
-            export_query_as_csv(query, query_name=f"query{num}_{curr_timestamp}.csv", path=ANALYSIS_DIR)
+            export_query_as_csv(query, query_name=f"query{num}_{date.today()}.csv", path=ANALYSIS_DIR)
 
     except sqlite3.Error as error:
         print("Failed to execute the above query", error)
@@ -406,28 +404,46 @@ if __name__ == "__main__":
     )
 
     parser.add_argument(
-        "--titles",
+        "-t",
         type=str,
         help="A comma-separated list of titles to search for.",
         default=TITLES,
     )
     parser.add_argument(
-        "--keywords",
+        "-k",
         type=str,
         help="A comma-separated list of keywords to search for.",
         default=KEYWORDS,
     )
     parser.add_argument(
-        "--sortfield",
+        "-sf",
         type=str,
         help="The field to sort the results by.",
         default=SORT_FIELD,
     )
     parser.add_argument(
-        "--sortorder",
+        "-so",
         type=str,
         help="The order to sort the results by.",
         default=SORT_ORDER,
+    )
+    parser.add_argument(
+        "-se",
+        type=str,
+        help="The email address of the sender.",
+        default=os.environ.get("SENDER_EMAIL"),
+    )
+    parser.add_argument(
+        "-sp",
+        type=str,
+        help="The password of the sender.",
+        default=os.environ.get("SENDER_PASSWORD"),
+    )
+    parser.add_argument(
+        "-re",
+        type=str,
+        help="The email address of the recipient.",
+        default=os.environ.get("RECIPIENT_EMAIL"),
     )
 
     args = parser.parse_args()
@@ -435,6 +451,13 @@ if __name__ == "__main__":
     # Set search titles and keywords
     TITLES = args.titles
     KEYWORDS = args.keywords
+    SORT_FIELD = args.sortfield
+    SORT_ORDER = args.sortorder
+
+    # Set email credentials
+    os.environ["SENDER_EMAIL"] = args.sender_email
+    os.environ["SENDER_PASSWORD"] = args.sender_password
+    os.environ["RECIPIENT_EMAIL"] = args.recipient_email
 
     # Run pipeline
     run_pipeline()
@@ -445,14 +468,14 @@ if __name__ == "__main__":
     ###############################################################################################
 
 # TODO - MAIN:
-#       - Solve doubts: why response is so small?
 #       - Setup a cron job to run this script daily scheduled on GCP
 #       - Use professional project structure and architecture
+#       - Solve doubts: why response is so small?
 
 
-# TODO - Final touches:
+# TODO - Additional:
 #  - Add more specific error handling to catch errors accurately
 #  - Improve models if we extract more data points
 #  - Could add unit and integration tests with unittest and a CI/CD pipeline
 #  - Could add logs for debugging with logger module
-#  - Could add more robust email sending
+#  - Could add more robust email sending security
