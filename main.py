@@ -447,8 +447,7 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    # Set search titles and keywords
-
+    # Set search parameters
     TITLES = [str(title) for title in args.t.split(",")]
     KEYWORDS = [str(keyword) for keyword in args.k.split(",")]
     SORT_FIELD = args.sortfield
