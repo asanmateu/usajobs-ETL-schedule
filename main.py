@@ -6,7 +6,6 @@ import sqlite3
 import smtplib
 import requests
 import argparse
-from os import environ
 from datetime import date, datetime
 from typing import List
 from dotenv import load_dotenv
@@ -25,9 +24,12 @@ DB_NAME = str(os.environ.get("DB_NAME"))
 DATABASE_DIR = os.path.join(BASE_DIR, DB_NAME)
 EXPORTS_DIR = os.path.join(BASE_DIR, r"exports")
 
-PAGE_LIMIT = 500
+# Set up main search parameters
 TITLES = ['Data Analyst', 'Data Scientist', 'Data Engineering']
 KEYWORDS = ['data', 'analysis', 'analytics']
+SORT_FIELD = "DatePosted"
+SORT_ORDER = "Descending"
+PAGE_LIMIT = 500
 
 # Change directory to the directory of this script
 os.chdir(BASE_DIR)
@@ -73,7 +75,7 @@ def get_api_call(endpoint: str, params: dict, base_url: str = BASE_URL, page_lim
         sys.exit(1)
 
 
-def parse_positions(response_json):
+def parse_response(response_json):
     """
     Parses a response JSON for wanted fields.
 
@@ -114,8 +116,6 @@ def extract_positions(titles: List[str], keywords: List[str]):
 
     Returns the values ready to be loaded into database. """
 
-    # TODO: Only 2 results are returned. Also, unsure whether this merge is appropriate to avoid duplicates.
-
     # Set up API query parameters
     params_titles = {
         "PositionTitle": titles
@@ -131,8 +131,8 @@ def extract_positions(titles: List[str], keywords: List[str]):
         api_response_keywords = get_api_call("Search", params_keywords)
 
         # Parse the API responses
-        title_search = parse_positions(api_response_titles)
-        keyword_search = parse_positions(api_response_keywords)
+        title_search = parse_response(api_response_titles)
+        keyword_search = parse_response(api_response_keywords)
 
         # Merge search results on PositionID into a DataFrame
         merged_search = title_search + keyword_search
@@ -172,7 +172,7 @@ def prep_database(db_name: str = DB_NAME) -> None:
             db_connection.close()
 
 
-def load_df(df: pd.DataFrame, db_name: str = DB_NAME) -> None:
+def load_data_into_db(df: pd.DataFrame, db_name: str = DB_NAME) -> None:
     """Loads dataframe into database using sqlalchemy. """
     try:
         db_connection = db_connect(db_name)
@@ -299,12 +299,10 @@ def send_reports(reports_path: str):
 
     Returns None
     """
-    curr_timestamp = int(datetime.timestamp(datetime.now()))
-
     # Set up email parameters
     msg = MIMEMultipart()
-    msg["From"] = os.environ.get("EMAIL")
-    msg["To"] = os.environ.get("EMAIL_TO")
+    msg["From"] = os.environ.get("SENDER_EMAIL")
+    msg["To"] = os.environ.get("RECIPIENT_EMAIL")
     msg["Subject"] = "Antonio - Data Analysis Reports {}".format(date.today())
     msg.attach(MIMEText("Please find attached reports for today's analysis."))
 
@@ -335,7 +333,7 @@ def send_reports(reports_path: str):
         # Identify ourselves to smtp gmail client
         smtp_server.ehlo()
         # Identify to server this time with encrypted connection
-        smtp_server.login(os.environ.get('EMAIL'), os.environ.get('PASSWORD'))
+        smtp_server.login(os.environ.get('SENDER_EMAIL'), os.environ.get('SENDER_PASSWORD'))
         # Send email
         smtp_server.sendmail(os.environ.get('EMAIL'), os.environ.get('EMAIL_TO'), msg.as_string())
         # Quit server
@@ -345,22 +343,16 @@ def send_reports(reports_path: str):
         sys.exit(1)
 
 
-if __name__ == "__main__":
+def run_pipeline():
     """
-    Puts it all together, and runs everything end-to-end. 
+    Runs the pipeline.
 
-    Feel free to create additional functions that represent distinct functional units, 
-    rather than putting it all in here. 
-
-    Optionally, enable running this script as a CLI tool with arguments for position titles and keywords. 
+    Returns None
     """
-
-    # parser = argparse.ArgumentParser()
-
     # Step 1: Extract and transform job data from API
     try:
         print("Extracting and parsing job data from API...")
-        response_dataframe = extract_positions(TITLES, KEYWORDS)
+        response_df = extract_positions(TITLES, KEYWORDS)
     except Exception as e:
         print("Failed to extract and parse job data from API", e)
         sys.exit(1)
@@ -372,7 +364,7 @@ if __name__ == "__main__":
         prep_database()
         print("Database connection successful.")
         print("Loading data into database...")
-        load_df(response_dataframe)
+        load_data_into_db(response_df)
         print("Data load complete.")
     except Exception as e:
         print("Failed to connect to database", e)
@@ -393,23 +385,74 @@ if __name__ == "__main__":
         send_reports(ANALYSIS_DIR)  # ANALYSIS_DIR is defined when function is executed
         print("Reports email sent.")
     except Exception as e:
-        print("Failed to send reports email", e)
+        print("Failed to send reports email - make sure you set SENDER_EMAIL, SENDER_PASSWORD,"
+              " and RECIPIENT_EMAIL environment variables", e)
         sys.exit(1)
 
 
-# TODO:
+if __name__ == "__main__":
+    """
+    Puts it all together, and runs everything end-to-end. 
+
+    Feel free to create additional functions that represent distinct functional units, 
+    rather than putting it all in here. 
+
+    Optionally, enable running this script as a CLI tool with arguments for position titles and keywords. 
+    """
+    # Set up arguments for CLI tool to set search titles and keywords
+    parser = argparse.ArgumentParser(
+        description="Runs the data analysis pipeline setting main search parameters.",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+
+    parser.add_argument(
+        "--titles",
+        type=str,
+        help="A comma-separated list of titles to search for.",
+        default=TITLES,
+    )
+    parser.add_argument(
+        "--keywords",
+        type=str,
+        help="A comma-separated list of keywords to search for.",
+        default=KEYWORDS,
+    )
+    parser.add_argument(
+        "--sortfield",
+        type=str,
+        help="The field to sort the results by.",
+        default=SORT_FIELD,
+    )
+    parser.add_argument(
+        "--sortorder",
+        type=str,
+        help="The order to sort the results by.",
+        default=SORT_ORDER,
+    )
+
+    args = parser.parse_args()
+
+    # Set search titles and keywords
+    TITLES = args.titles
+    KEYWORDS = args.keywords
+
+    # Run pipeline
+    run_pipeline()
+
+    # Exit cleanly
+    sys.exit(0)
+
+    ###############################################################################################
+
+# TODO - MAIN:
 #       - Solve doubts: why response is so small?
 #       - Setup a cron job to run this script daily scheduled on GCP
-#       - Add argument parsing to CLI tool
-#       - Use professional project structure
+#       - Use professional project structure and architecture
 
 
-# TODO: Final touches
-#  - Add error handling to catch more accurate errors
-#  - Add CLI functionality
-#  - Improve models / extract more data points / use foreign keys
-#  - Could add unit tests
-#  - Could add logs for debugging
+# TODO - Final touches:
+#  - Add more specific error handling to catch errors accurately
+#  - Improve models if we extract more data points
+#  - Could add unit and integration tests with unittest and a CI/CD pipeline
+#  - Could add logs for debugging with logger module
 #  - Could add more robust email sending
-#  - Make script modular and separated to different files for better maintainability
-
