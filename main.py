@@ -455,9 +455,9 @@ if __name__ == "__main__":
     SORT_ORDER = args.sortorder
 
     # Set email credentials
-    os.environ["SENDER_EMAIL"] = args.sender_email
-    os.environ["SENDER_PASSWORD"] = args.sender_password
-    os.environ["RECIPIENT_EMAIL"] = args.recipient_email
+    os.environ["SENDER_EMAIL"] = args.se
+    os.environ["SENDER_PASSWORD"] = args.sp
+    os.environ["RECIPIENT_EMAIL"] = args.re
 
     # Run pipeline
     run_pipeline()
