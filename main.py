@@ -81,8 +81,6 @@ def parse_response(response_json):
 
     Returns a list of positions of appropriate object type. """
 
-    # TODO: Could improve this by extracting all variations of same position / per location different salaries
-
     positions = []
 
     try:
@@ -148,7 +146,6 @@ def extract_positions(titles: List[str], keywords: List[str]):
 
 def prep_database(db_name: str = DB_NAME) -> None:
     """Connects to database and creates tables if necessary. """
-    # TODO: Could improve database design adding levels of granularity and foreign keys
     try:
         db_connection = db_connect(db_name)
         db_cursor = db_connection.cursor()
@@ -387,6 +384,8 @@ def run_pipeline():
               " and RECIPIENT_EMAIL environment variables", e)
         sys.exit(1)
 
+    print("Pipeline complete.")
+
 
 if __name__ == "__main__":
     """
@@ -449,8 +448,9 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     # Set search titles and keywords
-    TITLES = args.titles
-    KEYWORDS = args.keywords
+
+    TITLES = [str(title) for title in args.t.split(",")]
+    KEYWORDS = [str(keyword) for keyword in args.k.split(",")]
     SORT_FIELD = args.sortfield
     SORT_ORDER = args.sortorder
 
@@ -467,15 +467,4 @@ if __name__ == "__main__":
 
     ###############################################################################################
 
-# TODO - MAIN:
-#       - Setup a cron job to run this script daily scheduled on GCP
-#       - Use professional project structure and architecture
-#       - Solve doubts: why response is so small?
 
-
-# TODO - Additional:
-#  - Add more specific error handling to catch errors accurately
-#  - Improve models if we extract more data points
-#  - Could add unit and integration tests with unittest and a CI/CD pipeline
-#  - Could add logs for debugging with logger module
-#  - Could add more robust email sending security
