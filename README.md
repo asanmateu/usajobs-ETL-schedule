@@ -62,7 +62,7 @@ With more time I would have added more features to the script. For example:
 
     * Further reaseach the API functionality to understand why so little results are returned.
     * Extract all variants for each position by further parsing and transforming the API's responses.
-    * Use professional project structure and architecture.
+    * Test modular project structure.
     * Add more specific error handling to catch errors accurately.
     * Improve models if we extract more data points by separating relationships into different tables using foreign keys.
     * Add logs for debugging with logger module.
