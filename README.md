@@ -17,6 +17,14 @@ This can be done through the command line or by adding a few arguments to the sc
 
     $ python main.py -re <RECIPIENT_EMAIL> -se <SENDER_EMAIL> -sp <SENDER_PASSWORD>
 
+Please, note that if you are cloning the GitHub repository, you must also set the following environment variables:
+
+    * `USER_AGENT`: The user agent to use when calling the USA Government API.
+    * `API_KEY`: The API key to use when calling the USA Government API.
+    * `DB_NAME`: The name of the database to use.
+    * `SMTP_SERVER`: The SMTP server to use.
+    * `SMTP_PORT`: The SMTP port to use.
+
 Additionally, the script will need to be run with the following commands if you want to overwrite the default 
 search parameters:
 
