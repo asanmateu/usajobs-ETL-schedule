@@ -16,8 +16,9 @@ def run_pipeline(search_titles: List[str] = TITLES, search_keywords: List[str] =
     """
     # Step 1: Extract and transform job data from API
     try:
-        print("Extracting and parsing job data from API...")
-        response_df = extract_positions(search_titles, search_keywords)
+        print("Extracting and transforming job data from API...")
+        api_response_titles, api_response_keywords = extract_positions(search_titles, search_keywords)
+        search_df = transform_response_to_df(api_response_titles, api_response_keywords)
     except Exception as e:
         print("Failed to extract and parse job data from API", e)
         sys.exit(1)
@@ -29,7 +30,7 @@ def run_pipeline(search_titles: List[str] = TITLES, search_keywords: List[str] =
         prep_database()
         print("Database connection successful.")
         print("Loading data into database...")
-        load_data_into_db(response_df)
+        load_data_into_db(search_df)
         print("Data load complete.")
     except Exception as e:
         print("Failed to connect to database", e)
