@@ -70,3 +70,7 @@ With more time I would have added more features to the script. For example:
     * Add unit and integration tests.
     * Improve CLI experience.
 
+# Additional Notes:
+
+I recently converted the project structure from monolithic to modular. This version would require me to run the script and debug accordingly. 
+If for some reason the script is not working, you can let me know, and I will revert the changes. Otherwise, you can refer to the zip file I sent over via email.
