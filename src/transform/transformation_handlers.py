@@ -1,3 +1,4 @@
+from constants import TITLES, KEYWORDS
 from typing import List
 import pandas as pd
 import sys
@@ -36,14 +37,14 @@ def parse_response(response_json):
         sys.exit(1)
 
 
-def transform_response_to_df(titles: List[str], keywords: List[str]):
+def transform_response_to_df(titles_response: List[str], keywords_response: List[str] = KEYWORDS):
     """
     Transforms a parse JSON to a pandas dataframe.
 
     Returns a pandas dataframe. """
 
-    title_search = parse_response(titles)
-    keyword_search = parse_response(keywords)
+    title_search = parse_response(titles_response)
+    keyword_search = parse_response(keywords_response)
 
     # Merge search results on PositionID into a DataFrame
     merged_search = title_search + keyword_search

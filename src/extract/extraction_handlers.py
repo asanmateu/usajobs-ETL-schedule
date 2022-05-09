@@ -1,4 +1,4 @@
-from constants import BASE_URL, PAGE_LIMIT, USER_AGENT, API_KEY
+from constants import BASE_URL, PAGE_LIMIT, USER_AGENT, API_KEY, TITLES, KEYWORDS
 from src.transform.transformation_handlers import parse_response, transform_response_to_df
 from typing import List
 import requests
@@ -36,7 +36,7 @@ def get_api_call(endpoint: str, params: dict, base_url: str = BASE_URL, page_lim
         sys.exit(1)
 
 
-def extract_positions(titles: List[str], keywords: List[str]):
+def extract_positions(titles: List[str] = TITLES, keywords: List[str] = KEYWORDS):
     """
     Makes API calls for titles and keywords, parses the responses.
 
@@ -53,10 +53,10 @@ def extract_positions(titles: List[str], keywords: List[str]):
 
     # Retrieve API responses
     try:
-        api_response_titles = get_api_call("Search", params_titles)
-        api_response_keywords = get_api_call("Search", params_keywords)
+        titles_response = get_api_call("Search", params_titles)
+        keywrods_response = get_api_call("Search", params_keywords)
 
-        return api_response_titles, api_response_keywords
+        return titles_response, keywrods_response
 
     except requests.exceptions.HTTPError as err:
         print(err)
