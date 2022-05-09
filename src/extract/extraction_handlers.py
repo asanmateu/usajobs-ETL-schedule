@@ -54,9 +54,9 @@ def extract_positions(titles: List[str] = TITLES, keywords: List[str] = KEYWORDS
     # Retrieve API responses
     try:
         titles_response = get_api_call("Search", params_titles)
-        keywrods_response = get_api_call("Search", params_keywords)
+        keywords_response = get_api_call("Search", params_keywords)
 
-        return titles_response, keywrods_response
+        return titles_response, keywords_response
 
     except requests.exceptions.HTTPError as err:
         print(err)
