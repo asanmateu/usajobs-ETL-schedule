@@ -1,4 +1,3 @@
-from constants import TITLES, KEYWORDS
 from typing import List
 import pandas as pd
 import sys
@@ -37,7 +36,7 @@ def parse_response(response_json):
         sys.exit(1)
 
 
-def transform_response_to_df(titles_response: List[str], keywords_response: List[str] = KEYWORDS):
+def transform_response_to_df(titles_response: List[str], keywords_response: List[str]):
     """
     Transforms a parse JSON to a pandas dataframe.
 
