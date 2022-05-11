@@ -41,7 +41,7 @@ using a tool such as miniconda or running the pipenv environment.
 
 First, you would copy python's root directory, which you can find by running the following command:
 
-    $ whihc python
+    $ which python
 
 Then you would open a crontab file in your default editor. 
 
