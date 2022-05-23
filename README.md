@@ -1,4 +1,4 @@
-# USAGovJobs ETL Automation
+# USAGovJobs - ETL Automation
 
 To activate the virtual environment, run the following command:
 
